@@ -33,18 +33,25 @@ public static class Services
             .AddSingleton<NetlifyClient>();
     }
 
-    public static ServiceProvider CreateProvider()
+    public static ServiceProvider CreateProvider(string? settingsFileName)
     {
         var appDataDir = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         var appDataFileName = Path.Combine(appDataDir, "ansel", "appsettings.json");
 
-        var builder = Host.CreateApplicationBuilder();
-        var config = builder
+        var builder = Host
+            .CreateApplicationBuilder()
             .Configuration
             .AddJsonFile(appDataFileName, optional: true)
-            .AddJsonFile("appsettings.json", optional: true)
-            .AddEnvironmentVariables()
-            .Build();
+            .AddJsonFile("appsettings.json", optional: true);
+
+        if (!string.IsNullOrWhiteSpace(settingsFileName))
+        {
+            builder.AddJsonFile(settingsFileName, optional: true);
+        }
+
+        builder.AddEnvironmentVariables();
+
+        var config = builder.Build();
 
         var services = new ServiceCollection();
         Configure(services, config);

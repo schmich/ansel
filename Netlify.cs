@@ -26,10 +26,12 @@ class NetlifyClient(NetlifySharp.NetlifyClient netlify, NetlifyConfig config)
         }
         catch (JsonException)
         {
+            Log.Warn("malformed portfolio.json, using empty portfolio");
             return new Portfolio { Photos = [] };
         }
         catch (HttpRequestException e) when (e.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
+            Log.Warn("http 404 for portfolio.json, using empty portfolio");
             return new Portfolio { Photos = [] };
         }
     }

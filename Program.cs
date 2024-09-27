@@ -30,7 +30,7 @@ class Program
             .Cancellation(() => _cts.Token)
             .GlobalHandler(
                 RunCommand,
-                new Option<string>("--config", () => "", "path to yaml config file"),
+                new Option<string?>("--settings", () => null, "path to json settings file"),
                 new Option<string>("--log-template", () => "[{Timestamp:HH:mm:ss} {Level:u3}] {Message}{NewLine}{Exception}", "log message template"),
                 new Option<bool>("--log-debug", () => false, "whether to log debug information"),
                 new Option<string>("--timeout", () => "", "max execution time for command")
@@ -92,14 +92,14 @@ class Program
         return await app.InvokeAsync(args);
     }
 
-    public static async Task<int> RunCommand(InvocationContext ctx, ICommandHandler handler, string yamlFileName, string logTemplate, bool logDebug, string timeoutExpr)
+    public static async Task<int> RunCommand(InvocationContext ctx, ICommandHandler handler, string? settingsFileName, string logTemplate, bool logDebug, string timeoutExpr)
     {
         try
         {
             Log.Initialize(logTemplate, logDebug);
             Log.Debug("debug logging enabled");
 
-            _provider = Services.CreateProvider();
+            _provider = Services.CreateProvider(settingsFileName);
 
             using var timeoutSource = new CancellationTokenSource();
             using var interruptSource = new CancellationTokenSource();
