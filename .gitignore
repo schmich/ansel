@@ -1,5 +1,5 @@
 bin/
 obj/
 public/
-appsettings.json
+appsettings*.json
 portfolio.json

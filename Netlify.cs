@@ -13,14 +13,12 @@ class NetlifyClient(NetlifySharp.NetlifyClient netlify, NetlifyConfig config)
     public async Task<Portfolio> GetDeployedPortfolio(CancellationToken ct)
     {
         var site = await netlify.GetSiteAsync(config.SiteId, ct);
-
         var portfolioJsonUrl = new Uri(new Uri(site.PublishedDeploy.SslUrl), "/portfolio.json");
-
-        using var client = new HttpClient();
 
         Log.Info($"fetch deployed portfolio.json from {portfolioJsonUrl}");
         try
         {
+            using var client = new HttpClient();
             return await client.GetFromJsonAsync<Portfolio>(portfolioJsonUrl, ct)
                 ?? throw new CommandException("failed to get deployed portfolio json");
         }
