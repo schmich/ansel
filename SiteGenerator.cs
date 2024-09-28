@@ -54,8 +54,11 @@ class SiteGenerator
         {
             var collectionDir = Path.Combine(outputDir, collection.Slug);
             Directory.CreateDirectory(collectionDir);
-
             await Generate(collection, templateDir, "collection.liquid", Path.Combine(collectionDir, "index.html"));
+
+            var lightboxDir = Path.Combine(collectionDir, "lightbox");
+            Directory.CreateDirectory(lightboxDir);
+            await Generate(collection, templateDir, "lightbox.liquid", Path.Combine(lightboxDir, "index.html"));
         }
 
         foreach (var templateFileName in Directory.EnumerateFiles(templateDir, "*", SearchOption.AllDirectories))
