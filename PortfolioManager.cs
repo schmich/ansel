@@ -2,29 +2,40 @@ using SixLabors.ImageSharp;
 
 class PortfolioManager(OneDriveClient drive)
 {
-    public async Task<(bool Changed, Portfolio Portfolio)> UpdatePortfolio(Portfolio portfolio, CancellationToken ct)
+    public async Task<Portfolio> SyncWithOneDrive(Portfolio portfolio, CancellationToken ct)
     {
-        var byId = portfolio.Photos.ToDictionary(p => p.Id, p => p);
+        var deployedPhotos = portfolio.Photos.ToDictionary(p => p.Id, p => p);
+        var oneDrivePhotos = await drive.GetPhotos(ct).ToListAsync(ct);
+        var existingPhotos = oneDrivePhotos.Where(p => deployedPhotos.ContainsKey(p.Id));
 
-        var curPhotos = await drive.GetPhotos(ct).ToListAsync(ct);
-        var addPhotos = curPhotos.Where(p => !byId.ContainsKey(p.Id)).ToList();
-        // var changePhotos = curPhotos.Where(p => byId.ContainsKey(p.Id) && (byId[p.Id].ModifiedAt != p.ModifiedAt || byId[p.Id].Collection != p.Collection)).ToList();
-        // todo change detection
-        var changePhotos = curPhotos.Where(p => byId.ContainsKey(p.Id) && (byId[p.Id].ModifiedAt != p.ModifiedAt)).ToList();
-        // // todo we do not need to update photo if only collection changed (e.g. folder rename)
-        var updatePhotos = addPhotos.Concat(changePhotos).ToList();
-
-        var removePhotos = portfolio.Photos.Select(p => p.Id)
-            .Except(curPhotos.Select(p => p.Id))
+        // change type 1: photo removed from one drive
+        var removedPhotoIds = portfolio.Photos.Select(p => p.Id)
+            .Except(oneDrivePhotos.Select(p => p.Id))
             .ToHashSet();
 
-        if (updatePhotos.Count == 0 && removePhotos.Count == 0)
+        var finalPhotos = new Dictionary<string, PortfolioPhoto>(deployedPhotos.Where(p => !removedPhotoIds.Contains(p.Key)));
+
+        // change type 2: photo metadata changed
+        var metaChangedPhotos = existingPhotos
+            .Select(p => new { OneDrive = p, Deployed = deployedPhotos[p.Id] })
+            .Where(p => p.OneDrive.Url != p.Deployed.Url
+                    || !p.OneDrive.Path.SequenceEqual(p.Deployed.Path));
+
+        foreach (var photo in metaChangedPhotos)
         {
-            Log.Info("no portfolio changes found");
-            return (false, portfolio);
+            finalPhotos[photo.Deployed.Id] = photo.Deployed with
+            {
+                Path = photo.OneDrive.Path,
+                Url = photo.OneDrive.Url
+            };
         }
 
-        foreach (var photo in updatePhotos)
+        // change type 3: photo added from one drive
+        // change type 4: photo content changed on one drive
+        var newPhotos = oneDrivePhotos.Where(p => !deployedPhotos.ContainsKey(p.Id));
+        var contentChangedPhotos = existingPhotos.Where(p => deployedPhotos[p.Id].CTag != p.CTag);
+
+        foreach (var photo in newPhotos.Concat(contentChangedPhotos))
         {
             if (photo.Path.Length < 3)
             {
@@ -34,27 +45,20 @@ class PortfolioManager(OneDriveClient drive)
             using var stream = await photo.Fetch(ct);
             using var image = await Image.LoadAsync(stream, ct);
 
-            byId[photo.Id] = new PortfolioPhoto
+            finalPhotos[photo.Id] = new PortfolioPhoto
             {
                 Id = photo.Id,
-                Path = [..photo.Path.Skip(1)],
-                ModifiedAt = photo.ModifiedAt,
+                Path = photo.Path,
                 Url = photo.Url,
                 Width = image.Width,
                 Height = image.Height,
+                ETag = photo.ETag,
+                CTag = photo.CTag,
+                ModifiedAt = photo.ModifiedAt,
                 Exif = Exif.FilterProfile(image.Metadata.ExifProfile, maxEntrySizeBytes: 1024)
             };
         }
 
-        var updatedGallery = new Portfolio
-        {
-            Photos = [..byId.Where(e => !removePhotos.Contains(e.Key)).Select(e => e.Value)]
-        };
-
-        Log.Info($"{removePhotos.Count} photos removed");
-        Log.Info($"{addPhotos.Count} photos added");
-        Log.Info($"{changePhotos.Count} photos changed");
-
-        return (true, updatedGallery);
+        return new Portfolio { Photos = [..finalPhotos.Values] };
     }
 }

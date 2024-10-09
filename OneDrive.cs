@@ -6,8 +6,10 @@ using Microsoft.Graph.Shares.Item;
 record OneDrivePhoto(OneDriveClient Client)
 {
     public required string Id { get; init; }
+    public required string ETag { get; init; }
+    public required string CTag { get; init; }
     public required string[] Path { get; init; }
-    public required long ModifiedAt { get; init; }
+    public required DateTimeOffset ModifiedAt { get; init; }
     public required Uri Url { get; init; }
 
     public Task<Stream> Fetch(CancellationToken ct) => Client.FetchPhoto(Id, ct);
@@ -70,8 +72,10 @@ class OneDriveClient
             yield return new OneDrivePhoto(this)
             {
                 Id = item.Id ?? throw new Exception("unknown item id"),
+                ETag = item.ETag ?? throw new Exception("unknown item etag"),
+                CTag = item.CTag ?? throw new Exception("unknown item ctag"),
                 Path = [..path, name],
-                ModifiedAt = item.LastModifiedDateTime?.ToUnixTimeSeconds() ?? throw new Exception("unknown item modified time"),
+                ModifiedAt = item.LastModifiedDateTime ?? throw new Exception("unknown item modified time"),
                 Url = item.AdditionalData.TryGetValue("@microsoft.graph.downloadUrl", out var url) && url is string downloadUrl
                     ? new Uri(downloadUrl)
                     : throw new Exception("unknown item download url")

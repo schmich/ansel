@@ -75,22 +75,26 @@ partial record PortfolioPhoto
 
     public required string[] Path { get; init; }
 
-    public required long ModifiedAt { get; init; }
-
     public required Uri Url { get; init; }
 
     public required int Width { get; init; }
     public required int Height { get; init; }
+
+    public required string ETag { get; init; }
+    public required string CTag { get; init; }
+
+    [JsonConverter(typeof(DateTimeOffsetConverter))]
+    public required DateTimeOffset ModifiedAt { get; init; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     [JsonConverter(typeof(ExifProfileConverter))]
     public ExifProfile? Exif { get; init; }
 
     [JsonIgnore]
-    public string Collection => Path[0];
+    public string Collection => Path[1];
 
     [JsonIgnore]
-    public string? Section => Path.Length <= 2 ? null : string.Join(" - ", Path.Skip(1).Take(Path.Length - 2));
+    public string? Section => Path.Length <= 3 ? null : string.Join(" - ", Path.Skip(2).Take(Path.Length - 3));
 
     [JsonIgnore]
     public string FileName => Path[^1];
@@ -106,4 +110,24 @@ partial record PortfolioPhoto
 
     [GeneratedRegex(@"(\b|^)cover(\b|$)", RegexOptions.IgnoreCase, "en-US")]
     private static partial Regex IsCoverPattern();
+}
+
+class DateTimeOffsetConverter : JsonConverter<DateTimeOffset>
+{
+    public override DateTimeOffset Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType != JsonTokenType.Number)
+        {
+            throw new JsonException("expected number token");
+        }
+
+        var seconds = reader.GetInt64();
+        return DateTimeOffset.FromUnixTimeSeconds(seconds);
+    }
+
+    public override void Write(Utf8JsonWriter writer, DateTimeOffset value, JsonSerializerOptions options)
+    {
+        var seconds = value.ToUnixTimeSeconds();
+        writer.WriteNumberValue(seconds);
+    }
 }

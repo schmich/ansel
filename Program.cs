@@ -74,24 +74,38 @@ class Program
             .Command(cmd => cmd
                 .Name("portfolio", "portfolio.json.gz tools")
                 .Command(cmd => cmd
-                    .Name("download-deployed", "download deployed portfolio.json.gz")
+                    .Name("from-netlify", "create portfolio.json.gz from netlify site")
                     .Handler(
-                        PortfolioDownloadDeployed,
-                        new Argument<string>("output file")
+                        PortfolioFromNetlify,
+                        new Argument<string>("output file", () => "portfolio.json.gz")
                     )
                 )
                 .Command(cmd => cmd
-                    .Name("download-latest", "download latest portfolio.json.gz")
+                    .Name("from-onedrive", "create portfolio.json.gz from onedrive")
                     .Handler(
-                        PortfolioDownloadLatest,
-                        new Argument<string>("output file")
+                        PortfolioFromOneDrive,
+                        new Argument<string>("output file", () => "portfolio.json.gz")
                     )
                 )
                 .Command(cmd => cmd
-                    .Name("dump", "dump photo information from portfolio.json.gz")
+                    .Name("from-netlify-onedrive", "create portfolio.json.gz from netlify site and onedrive")
                     .Handler(
-                        PortfolioDump,
-                        new Argument<string>("file name or url")
+                        PortfolioFromNetlifyOneDrive,
+                        new Argument<string>("output file", () => "portfolio.json.gz")
+                    )
+                )
+                .Command(cmd => cmd
+                    .Name("from-local-onedrive", "create portfolio.json.gz from local and onedrive")
+                    .Handler(
+                        PortfolioFromLocalOneDrive,
+                        new Argument<string>("input & output file", () => "portfolio.json.gz")
+                    )
+                )
+                .Command(cmd => cmd
+                    .Name("show-photos", "show photo information from portfolio.json.gz")
+                    .Handler(
+                        PortfolioShowPhotos,
+                        new Argument<string>("file name or url", () => "portfolio.json.gz")
                     )
                 )
             )
@@ -208,8 +222,7 @@ class Program
         var siteGenerator = _provider.GetRequiredService<SiteGenerator>();
 
         var portfolio = await netlify.GetDeployedPortfolio(ct);
-        var (changed, newPortfolio) = await portfolioManager.UpdatePortfolio(portfolio, ct);
-        Log.Info($"portfolio has{(changed ? " " : " not ")}changed");
+        var newPortfolio = await portfolioManager.SyncWithOneDrive(portfolio, ct);
 
         await siteGenerator.Generate(newPortfolio, templateDir, outputDir);
     }
@@ -235,7 +248,7 @@ class Program
         }
     }
 
-    static async Task PortfolioDownloadDeployed(string outputFile, CancellationToken ct)
+    static async Task PortfolioFromNetlify(string outputFile, CancellationToken ct)
     {
         if (File.Exists(outputFile))
         {
@@ -246,10 +259,24 @@ class Program
         var portfolio = await netlify.GetDeployedPortfolio(ct);
         portfolio.ToGzip(outputFile);
 
-        Log.Info($"deployed portfolio.json.gz saved to {outputFile}");
+        Log.Info($"portfolio saved to {outputFile}");
     }
 
-    static async Task PortfolioDownloadLatest(string outputFile, CancellationToken ct)
+    static async Task PortfolioFromOneDrive(string outputFile, CancellationToken ct)
+    {
+        if (File.Exists(outputFile))
+        {
+            throw new CommandException($"output file already exists: {outputFile}");
+        }
+
+        var portfolioManager = _provider.GetRequiredService<PortfolioManager>();
+        var portfolio = await portfolioManager.SyncWithOneDrive(new Portfolio { Photos = [] }, ct);
+        portfolio.ToGzip(outputFile);
+
+        Log.Info($"portfolio saved to {outputFile}");
+    }
+
+    static async Task PortfolioFromNetlifyOneDrive(string outputFile, CancellationToken ct)
     {
         if (File.Exists(outputFile))
         {
@@ -260,13 +287,24 @@ class Program
         var portfolioManager = _provider.GetRequiredService<PortfolioManager>();
 
         var portfolio = await netlify.GetDeployedPortfolio(ct);
-        var (_, newPortfolio) = await portfolioManager.UpdatePortfolio(portfolio, ct);
+        var newPortfolio = await portfolioManager.SyncWithOneDrive(portfolio, ct);
         newPortfolio.ToGzip(outputFile);
 
-        Log.Info($"latest portfolio.json.gz saved to {outputFile}");
+        Log.Info($"portfolio saved to {outputFile}");
     }
 
-    static async Task PortfolioDump(string fileNameOrUrl, CancellationToken ct)
+    static async Task PortfolioFromLocalOneDrive(string inputOutputFile, CancellationToken ct)
+    {
+        var portfolioManager = _provider.GetRequiredService<PortfolioManager>();
+
+        var portfolio = Portfolio.FromFile(inputOutputFile);
+        var newPortfolio = await portfolioManager.SyncWithOneDrive(portfolio, ct);
+        newPortfolio.ToGzip(inputOutputFile);
+
+        Log.Info($"portfolio saved to {inputOutputFile}");
+    }
+
+    static async Task PortfolioShowPhotos(string fileNameOrUrl, CancellationToken ct)
     {
         using var http = new HttpClient();
         using var portfolioStream = (Uri.TryCreate(fileNameOrUrl, UriKind.Absolute, out var url) && url.Scheme.StartsWith("http"))
