@@ -34,14 +34,12 @@ partial class SiteGenerator
             .Select(collection => new
             {
                 Name = StripOrdinal(collection.Key),
-                Slug = Slug(collection.Key),
                 Ordinal = GetOrdinal(collection.Key),
                 Sections = collection
                     .ToLookup(p => p.Section, p => p)
                     .Select(section => new
                     {
-                        Name = StripOrdinal(section.Key),
-                        Slug = Slug(section.Key ?? ""),
+                        Name = StripOrdinal(section.Key ?? ""),
                         Photos = section.OrderByDescending(p =>
                         {
                             var ordinal = GetOrdinal(p.FileName);
@@ -50,6 +48,13 @@ partial class SiteGenerator
                                 : p.TakenAt?.ToUnixTimeSeconds() ?? 0;
                         }).ToArray(),
                         Ordinal = GetOrdinal(section.Key)
+                    })
+                    .Select(s => new
+                    {
+                        s.Name,
+                        s.Photos,
+                        s.Ordinal,
+                        Slug = Slug(s.Name)
                     })
                     .OrderByDescending(s =>
                     {
@@ -62,9 +67,9 @@ partial class SiteGenerator
             .Select(c => new
             {
                 c.Name,
-                c.Slug,
                 c.Ordinal,
                 c.Sections,
+                Slug = Slug(c.Name),
                 Cover = c.Sections.SelectMany(s => s.Photos).Where(p => p.IsCover).FirstOrDefault()
                      ?? c.Sections.SelectMany(p => p.Photos).First()
             })
@@ -114,16 +119,6 @@ partial class SiteGenerator
         portfolio.ToGzip(Path.Join(outputDir, "portfolio.json.gz"));
     }
 
-    static string? StripOrdinal(string? title)
-    {
-        if (title == null)
-        {
-            return null;
-        }
-
-        return OrdinalPattern().Replace(title, "");
-    }
-
     static int? GetOrdinal(string? title)
     {
         if (title == null)
@@ -137,7 +132,9 @@ partial class SiteGenerator
             : null;
     }
 
-    static string Slug(string s) => Regex.Replace(s.ToLowerInvariant(), @"[^a-z0-9]+", e => "-").Trim();
+    static string StripOrdinal(string title) => OrdinalPattern().Replace(title, "");
+
+    static string Slug(string s) => SlugInvalidPattern().Replace(s, e => "-").ToLowerInvariant().Trim();
 
     static ValueTask<FluidValue> NetlifyImage(FluidValue url, FilterArguments arguments, TemplateContext context)
     {
@@ -215,6 +212,9 @@ partial class SiteGenerator
         await renderer.RenderViewAsync(writer, templateFileName, context);
     }
 
-    [GeneratedRegex(@"^#?(\d+)[^\w]+")]
+    [GeneratedRegex(@"^#?(\d+)\s*[\.\-]\s*")]
     private static partial Regex OrdinalPattern();
+
+    [GeneratedRegex(@"[^a-z0-9]+", RegexOptions.IgnoreCase)]
+    private static partial Regex SlugInvalidPattern();
 }
