@@ -3,7 +3,7 @@ using Microsoft.Graph;
 using Microsoft.Graph.Models;
 using Microsoft.Graph.Shares.Item;
 
-record OneDrivePhoto(OneDriveClient Client) : IDrivePhoto
+record OneDrivePhoto(OneDriveClient Client)
 {
     public required string Id { get; init; }
     public required string[] Path { get; init; }
@@ -34,7 +34,7 @@ class OneDriveClient
         _share = _graph.Shares[encodedShareUrl];
     }
 
-    public async IAsyncEnumerable<IDrivePhoto> GetPhotos([EnumeratorCancellation] CancellationToken ct)
+    public async IAsyncEnumerable<OneDrivePhoto> GetPhotos([EnumeratorCancellation] CancellationToken ct)
     {
         Log.Info("enumerate onedrive photos");
 
@@ -56,7 +56,7 @@ class OneDriveClient
         return stream ?? throw new Exception("failed to get photo stream");
     }
 
-    async IAsyncEnumerable<IDrivePhoto> GetPhotos(string[] path, DriveItem item, [EnumeratorCancellation] CancellationToken ct)
+    async IAsyncEnumerable<OneDrivePhoto> GetPhotos(string[] path, DriveItem item, [EnumeratorCancellation] CancellationToken ct)
     {
         if (item.Deleted != null)
         {
@@ -72,7 +72,9 @@ class OneDriveClient
                 Id = item.Id ?? throw new Exception("unknown item id"),
                 Path = [..path, name],
                 ModifiedAt = item.LastModifiedDateTime?.ToUnixTimeSeconds() ?? throw new Exception("unknown item modified time"),
-                Url = item.AdditionalData.TryGetValue("@microsoft.graph.downloadUrl", out var url) && url is string s ? new Uri(s) : throw new Exception("unknown item download url")
+                Url = item.AdditionalData.TryGetValue("@microsoft.graph.downloadUrl", out var url) && url is string downloadUrl
+                    ? new Uri(downloadUrl)
+                    : throw new Exception("unknown item download url")
             };
         }
         else if (item.Folder?.ChildCount > 0)

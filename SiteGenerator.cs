@@ -1,4 +1,3 @@
-using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Web;
 using Fluid;
@@ -6,7 +5,7 @@ using Fluid.Values;
 using Fluid.ViewEngine;
 using Microsoft.Extensions.FileProviders;
 
-class SiteGenerator
+partial class SiteGenerator
 {
     public async Task Generate(Portfolio portfolio, string templateDir, string outputDir)
     {
@@ -34,17 +33,46 @@ class SiteGenerator
             .ToLookup(p => p.Collection, p => p)
             .Select(collection => new
             {
-                Name = collection.Key,
+                Name = StripOrdinal(collection.Key),
                 Slug = Slug(collection.Key),
-                Cover = collection.Where(c => c.IsCover).FirstOrDefault() ?? collection.First(), // use newest photo if no cover
+                Ordinal = GetOrdinal(collection.Key),
                 Sections = collection
                     .ToLookup(p => p.Section, p => p)
                     .Select(section => new
                     {
-                        Name = section.Key,
+                        Name = StripOrdinal(section.Key),
                         Slug = Slug(section.Key ?? ""),
-                        Photos = section.ToArray()
+                        Photos = section.OrderByDescending(p =>
+                        {
+                            var ordinal = GetOrdinal(p.FileName);
+                            return ordinal.HasValue
+                                ? long.MaxValue - ordinal
+                                : p.TakenAt?.ToUnixTimeSeconds() ?? 0;
+                        }).ToArray(),
+                        Ordinal = GetOrdinal(section.Key)
                     })
+                    .OrderByDescending(s =>
+                    {
+                        return s.Ordinal.HasValue
+                            ? long.MaxValue - s.Ordinal
+                            : s.Photos.Select(p => p.TakenAt?.ToUnixTimeSeconds() ?? 0).Max();
+                    })
+                    .ToArray()
+            })
+            .Select(c => new
+            {
+                c.Name,
+                c.Slug,
+                c.Ordinal,
+                c.Sections,
+                Cover = c.Sections.SelectMany(s => s.Photos).Where(p => p.IsCover).FirstOrDefault()
+                     ?? c.Sections.SelectMany(p => p.Photos).First()
+            })
+            .OrderByDescending(c =>
+            {
+                return c.Ordinal.HasValue
+                    ? long.MaxValue - c.Ordinal
+                    : c.Sections.SelectMany(s => s.Photos).Select(p => p.TakenAt?.ToUnixTimeSeconds() ?? 0).Max();
             })
             .ToArray();
 
@@ -83,8 +111,30 @@ class SiteGenerator
             File.Copy(sourcePath, destPath);
         }
 
-        using var portfolioFile = File.OpenWrite(Path.Join(outputDir, "portfolio.json"));
-        JsonSerializer.Serialize(portfolioFile, portfolio);
+        portfolio.ToGzip(Path.Join(outputDir, "portfolio.json.gz"));
+    }
+
+    static string? StripOrdinal(string? title)
+    {
+        if (title == null)
+        {
+            return null;
+        }
+
+        return OrdinalPattern().Replace(title, "");
+    }
+
+    static int? GetOrdinal(string? title)
+    {
+        if (title == null)
+        {
+            return null;
+        }
+
+        var match = OrdinalPattern().Match(title);
+        return match.Success
+            ? int.Parse(match.Groups[1].Value)
+            : null;
     }
 
     static string Slug(string s) => Regex.Replace(s.ToLowerInvariant(), @"[^a-z0-9]+", e => "-").Trim();
@@ -164,4 +214,7 @@ class SiteGenerator
         var renderer = new FluidViewRenderer(options);
         await renderer.RenderViewAsync(writer, templateFileName, context);
     }
+
+    [GeneratedRegex(@"^#?(\d+)[^\w]+")]
+    private static partial Regex OrdinalPattern();
 }

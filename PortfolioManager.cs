@@ -1,6 +1,4 @@
-using System.Text.RegularExpressions;
 using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Metadata.Profiles.Exif;
 
 class PortfolioManager(OneDriveClient drive)
 {
@@ -28,32 +26,23 @@ class PortfolioManager(OneDriveClient drive)
 
         foreach (var photo in updatePhotos)
         {
-            if (photo.Path is not [var _, var collection, ..var sections, var name])
+            if (photo.Path.Length < 3)
             {
                 continue;
             }
 
-            var exif = await GetPhotoExif(photo, ct);
-            var comment = exif.GetString(ExifTag.XPComment)
-                       ?? exif.GetString(ExifTag.ImageDescription)
-                       ?? exif.GetString(ExifTag.UserComment);
-
-            // ExifTag.DateTime
-            // ExifTag.DateTimeDigitized
-            // ExifTag.DateTimeOriginal
-            // ExifTag.OffsetTime
-            // ExifTag.OffsetTimeDigitized
-            // ExifTag.OffsetTimeOriginal
+            using var stream = await photo.Fetch(ct);
+            using var image = await Image.LoadAsync(stream, ct);
 
             byId[photo.Id] = new PortfolioPhoto
             {
                 Id = photo.Id,
-                Caption = comment,
-                Collection = collection,
-                Section = sections.Length == 0 ? null : string.Join(" - ", sections),
-                IsCover = Regex.IsMatch(name, @"(\b|^)cover(\b|$)", RegexOptions.IgnoreCase),
+                Path = [..photo.Path.Skip(1)],
                 ModifiedAt = photo.ModifiedAt,
-                Url = photo.Url
+                Url = photo.Url,
+                Width = image.Width,
+                Height = image.Height,
+                Exif = Exif.FilterProfile(image.Metadata.ExifProfile, maxEntrySizeBytes: 1024)
             };
         }
 
@@ -67,33 +56,5 @@ class PortfolioManager(OneDriveClient drive)
         Log.Info($"{changePhotos.Count} photos changed");
 
         return (true, updatedGallery);
-    }
-
-    static async Task<ExifProfile> GetPhotoExif(IDrivePhoto photo, CancellationToken ct)
-    {
-        using var stream = await photo.Fetch(ct);
-        using var image = await Image.LoadAsync(stream, ct);
-        return image.Metadata.ExifProfile ?? new ExifProfile();
-    }
-}
-
-static class Extensions
-{
-    public static string? GetString(this ExifProfile exif, ExifTag<string> tag)
-    {
-        var value = exif.TryGetValue(tag, out var result)
-            ? result.Value?.Trim()?.Trim('\0')
-            : null;
-
-        return string.IsNullOrEmpty(value) ? null : value;
-    }
-
-    public static string? GetString(this ExifProfile exif, ExifTag<EncodedString> tag)
-    {
-        var value = exif.TryGetValue(tag, out var result)
-            ? result?.Value.Text?.Trim()?.Trim('\0')
-            : null;
-
-        return string.IsNullOrEmpty(value) ? null : value;
     }
 }

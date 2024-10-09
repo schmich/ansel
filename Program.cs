@@ -1,8 +1,9 @@
 ﻿using System.CommandLine;
 using System.CommandLine.Invocation;
 using System.CommandLine.Parsing;
-using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Metadata.Profiles.Exif;
 
 class Program
 {
@@ -50,7 +51,7 @@ class Program
                     .Name("generate", "generate website from template")
                     .Handler(
                         SiteGenerate,
-                        new Argument<string>("portfolio.json"),
+                        new Argument<string>("portfolio.json.gz"),
                         new Argument<string>("template dir"),
                         new Argument<string>("output dir")
                     )
@@ -71,19 +72,43 @@ class Program
                 )
             )
             .Command(cmd => cmd
-                .Name("portfolio", "portfolio tools")
+                .Name("portfolio", "portfolio.json.gz tools")
                 .Command(cmd => cmd
-                    .Name("download-deployed", "download deployed portfolio.json")
+                    .Name("download-deployed", "download deployed portfolio.json.gz")
                     .Handler(
                         PortfolioDownloadDeployed,
                         new Argument<string>("output file")
                     )
                 )
                 .Command(cmd => cmd
-                    .Name("download-latest", "download latest portfolio.json")
+                    .Name("download-latest", "download latest portfolio.json.gz")
                     .Handler(
                         PortfolioDownloadLatest,
                         new Argument<string>("output file")
+                    )
+                )
+                .Command(cmd => cmd
+                    .Name("dump", "dump photo information from portfolio.json.gz")
+                    .Handler(
+                        PortfolioDump,
+                        new Argument<string>("file name or url")
+                    )
+                )
+            )
+            .Command(cmd => cmd
+                .Name("exif", "exif tools")
+                .Command(cmd => cmd
+                    .Name("from-image", "show exif for image")
+                    .Handler(
+                        ExifFromImage,
+                        new Argument<string>("file name or url")
+                    )
+                )
+                .Command(cmd => cmd
+                    .Name("from-portfolio", "show exif for all images in portfolio.json.gz")
+                    .Handler(
+                        ExifFromPortfolio,
+                        new Argument<string>("file name or url")
                     )
                 )
             )
@@ -189,17 +214,14 @@ class Program
         await siteGenerator.Generate(newPortfolio, templateDir, outputDir);
     }
 
-    static async Task SiteGenerate(string portfolioJsonPath, string templateDir, string outputDir, CancellationToken ct)
+    static async Task SiteGenerate(string portfolioFileName, string templateDir, string outputDir, CancellationToken ct)
     {
-        if (!File.Exists(portfolioJsonPath))
+        if (!File.Exists(portfolioFileName))
         {
-            throw new CommandException($"portfolio json does not exist: {portfolioJsonPath}");
+            throw new CommandException($"portfolio json does not exist: {portfolioFileName}");
         }
 
-        var json = File.ReadAllText(portfolioJsonPath);
-        var portfolio = JsonSerializer.Deserialize<Portfolio>(json)
-            ?? throw new CommandException($"invalid portfolio json: {portfolioJsonPath}");
-
+        var portfolio = Portfolio.FromFile(portfolioFileName);
         var generator = _provider.GetRequiredService<SiteGenerator>();
         await generator.Generate(portfolio, templateDir, outputDir);
     }
@@ -222,11 +244,9 @@ class Program
 
         var netlify = _provider.GetRequiredService<NetlifyClient>();
         var portfolio = await netlify.GetDeployedPortfolio(ct);
+        portfolio.ToGzip(outputFile);
 
-        using var portfolioFile = File.OpenWrite(outputFile);
-        JsonSerializer.Serialize(portfolioFile, portfolio);
-
-        Log.Info($"deployed portfolio.json saved to {outputFile}");
+        Log.Info($"deployed portfolio.json.gz saved to {outputFile}");
     }
 
     static async Task PortfolioDownloadLatest(string outputFile, CancellationToken ct)
@@ -241,11 +261,23 @@ class Program
 
         var portfolio = await netlify.GetDeployedPortfolio(ct);
         var (_, newPortfolio) = await portfolioManager.UpdatePortfolio(portfolio, ct);
+        newPortfolio.ToGzip(outputFile);
 
-        using var portfolioFile = File.OpenWrite(outputFile);
-        JsonSerializer.Serialize(portfolioFile, newPortfolio);
+        Log.Info($"latest portfolio.json.gz saved to {outputFile}");
+    }
 
-        Log.Info($"latest portfolio.json saved to {outputFile}");
+    static async Task PortfolioDump(string fileNameOrUrl, CancellationToken ct)
+    {
+        using var http = new HttpClient();
+        using var portfolioStream = (Uri.TryCreate(fileNameOrUrl, UriKind.Absolute, out var url) && url.Scheme.StartsWith("http"))
+            ? await http.GetStreamAsync(url, ct)
+            : File.OpenRead(fileNameOrUrl);
+
+        var portfolio = Portfolio.FromGzip(portfolioStream);
+        foreach (var photo in portfolio.Photos)
+        {
+            Log.Info(photo);
+        }
     }
 
     static async Task SiteBuild(CancellationToken ct)
@@ -255,6 +287,50 @@ class Program
 
         using var client = new HttpClient();
         await client.PostAsync(config.BuildHookUrl, new StringContent("{}"), ct);
+    }
+
+    static async Task ExifFromImage(string fileNameOrUrl, CancellationToken ct)
+    {
+        using var http = new HttpClient();
+        using var imageStream = (Uri.TryCreate(fileNameOrUrl, UriKind.Absolute, out var url) && url.Scheme.StartsWith("http"))
+            ? await http.GetStreamAsync(url, ct)
+            : File.OpenRead(fileNameOrUrl);
+
+        using var image = await Image.LoadAsync(imageStream, ct);
+        ShowExif(image.Metadata.ExifProfile);
+    }
+
+    static async Task ExifFromPortfolio(string fileNameOrUrl, CancellationToken ct)
+    {
+        using var http = new HttpClient();
+        using var portfolioStream = (Uri.TryCreate(fileNameOrUrl, UriKind.Absolute, out var url) && url.Scheme.StartsWith("http"))
+            ? await http.GetStreamAsync(url, ct)
+            : File.OpenRead(fileNameOrUrl);
+
+        var portfolio = Portfolio.FromGzip(portfolioStream);
+        foreach (var photo in portfolio.Photos)
+        {
+            Log.Info(string.Join('/', photo.Path));
+            if (photo.Exif == null)
+            {
+                Log.Info("no exif data present");
+                continue;
+            }
+
+            ShowExif(photo.Exif);
+        }
+    }
+
+    static void ShowExif(ExifProfile? profile)
+    {
+        if (profile == null)
+        {
+            Log.Info("no exif data present");
+            return;
+        }
+
+        var table = Exif.ToTable(profile);
+        Console.WriteLine(table);
     }
 }
 
