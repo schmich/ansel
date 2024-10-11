@@ -79,6 +79,7 @@ partial record PortfolioPhoto
 
     public required int Width { get; init; }
     public required int Height { get; init; }
+    public required string BlurHash { get; init; }
 
     public required string ETag { get; init; }
     public required string CTag { get; init; }

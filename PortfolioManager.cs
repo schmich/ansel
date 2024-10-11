@@ -1,4 +1,6 @@
+using Blurhash.ImageSharp;
 using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.PixelFormats;
 
 class PortfolioManager(OneDriveClient drive)
 {
@@ -43,7 +45,7 @@ class PortfolioManager(OneDriveClient drive)
             }
 
             using var stream = await photo.Fetch(ct);
-            using var image = await Image.LoadAsync(stream, ct);
+            using var image = await Image.LoadAsync<Rgba32>(stream, ct);
 
             finalPhotos[photo.Id] = new PortfolioPhoto
             {
@@ -52,6 +54,7 @@ class PortfolioManager(OneDriveClient drive)
                 Url = photo.Url,
                 Width = image.Width,
                 Height = image.Height,
+                BlurHash = Blurhasher.Encode(image, 5, 4),
                 ETag = photo.ETag,
                 CTag = photo.CTag,
                 ModifiedAt = photo.ModifiedAt,
