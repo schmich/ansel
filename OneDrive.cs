@@ -68,7 +68,7 @@ class OneDriveClient
 
         var name = item.Name ?? throw new Exception("unknown item name");
 
-        if (item.File?.MimeType == "image/jpeg")
+        if (IsImageFile(item))
         {
             yield return new OneDrivePhoto(this)
             {
@@ -97,5 +97,19 @@ class OneDriveClient
                 }
             }
         }
+    }
+
+    static bool IsImageFile(DriveItem item)
+    {
+        string[] mimeTypes =
+        [
+            "image/jpeg",
+            "image/apng",
+            "image/avif",
+            "image/png",
+            "image/webp"
+        ];
+
+        return mimeTypes.Contains(item.File?.MimeType);
     }
 }
