@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Text;
 using Microsoft.Graph;
 using Microsoft.Graph.Models;
 using Microsoft.Graph.Shares.Item;
@@ -30,7 +31,7 @@ class OneDriveClient
 
     public OneDriveClient(GraphServiceClient graph, Uri shareUrl)
     {
-        var shareUrlBase64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(shareUrl.ToString()));
+        var shareUrlBase64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(shareUrl.ToString()));
         var encodedShareUrl = $"u!{shareUrlBase64.TrimEnd('=').Replace('/', '_').Replace('+', '-')}";
         _graph = graph;
         _share = _graph.Shares[encodedShareUrl];
