@@ -3,6 +3,8 @@ using System.Web;
 using Fluid;
 using Fluid.Values;
 using Fluid.ViewEngine;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.Extensions.FileProviders;
 
 partial class SiteGenerator
@@ -136,54 +138,25 @@ partial class SiteGenerator
 
     static string Slug(string s) => SlugInvalidPattern().Replace(s, e => "-").ToLowerInvariant().Trim();
 
-    static ValueTask<FluidValue> NetlifyImage(FluidValue url, FilterArguments arguments, TemplateContext context)
+    static ValueTask<FluidValue> Query(FluidValue url, FilterArguments arguments, TemplateContext context)
     {
-        var netlifyUrl = $"/.netlify/images?url={HttpUtility.UrlEncode(url.ToStringValue())}";
-        return new StringValue(netlifyUrl);
-    }
-
-    static ValueTask<FluidValue> Size(FluidValue url, FilterArguments arguments, TemplateContext context)
-    {
-        if (arguments.Count < 2)
+        var names = arguments.Names.ToArray();
+        var values = arguments.Values.ToArray();
+        if (names.Length != values.Length)
         {
-            throw new Exception("todo");
+            throw new Exception("all arguments must be named");
         }
 
-        // todo uri parsing, better logic here
-        return new StringValue(url.ToStringValue() + $"&w={arguments.At(0).ToStringValue()}&h={arguments.At(1).ToStringValue()}");
-    }
+        var uriBuilder = new UriBuilder(url.ToStringValue());
 
-    static ValueTask<FluidValue> Format(FluidValue url, FilterArguments arguments, TemplateContext context)
-    {
-        if (arguments.Count < 1)
+        var query = new QueryString(uriBuilder.Query);
+        for (var i = 0; i < names.Length; i++)
         {
-            throw new Exception("todo");
+            query = query.Add(names[i], values[i].ToStringValue());
         }
 
-        // todo uri parsing, better logic here
-        return new StringValue(url.ToStringValue() + $"&fm={arguments.At(0).ToStringValue()}");
-    }
-
-    static ValueTask<FluidValue> Quality(FluidValue url, FilterArguments arguments, TemplateContext context)
-    {
-        if (arguments.Count < 1)
-        {
-            throw new Exception("todo");
-        }
-
-        // todo uri parsing, better logic here
-        return new StringValue(url.ToStringValue() + $"&q={arguments.At(0).ToStringValue()}");
-    }
-
-    static ValueTask<FluidValue> Fit(FluidValue url, FilterArguments arguments, TemplateContext context)
-    {
-        if (arguments.Count < 1)
-        {
-            throw new Exception("todo");
-        }
-
-        // todo uri parsing, better logic here
-        return new StringValue(url.ToStringValue() + $"&fit={arguments.At(0).ToStringValue()}");
+        uriBuilder.Query = query.ToUriComponent();
+        return new StringValue(uriBuilder.Uri.ToString());
     }
 
     static async Task Generate(object model, string templateDir, string templateFileName, string outputFileName)
@@ -198,11 +171,7 @@ partial class SiteGenerator
         options.TemplateOptions.Trimming = TrimmingFlags.TagLeft | TrimmingFlags.TagRight;
         options.TemplateOptions.MemberAccessStrategy = new UnsafeMemberAccessStrategy();
         options.TemplateOptions.FileProvider = fileProvider;
-        options.TemplateOptions.Filters.AddFilter("netlify_image", NetlifyImage);
-        options.TemplateOptions.Filters.AddFilter("size", Size);
-        options.TemplateOptions.Filters.AddFilter("format", Format);
-        options.TemplateOptions.Filters.AddFilter("quality", Quality);
-        options.TemplateOptions.Filters.AddFilter("fit", Fit);
+        options.TemplateOptions.Filters.AddFilter("query", Query);
 
         var context = new TemplateContext(model, options.TemplateOptions);
 
