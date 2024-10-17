@@ -6,6 +6,7 @@ using SixLabors.ImageSharp.Metadata.Profiles.Exif;
 
 record Portfolio
 {
+    [JsonPropertyName("photos")]
     public required List<PortfolioPhoto> Photos { get; init; } = [];
 
     public static Portfolio FromFile(string fileName)
@@ -71,22 +72,35 @@ record Portfolio
 
 partial record PortfolioPhoto
 {
+    [JsonPropertyName("id")]
     public required string Id { get; init; }
 
+    [JsonPropertyName("path")]
     public required string[] Path { get; init; }
 
+    [JsonPropertyName("url")]
     public required Uri Url { get; init; }
 
+    [JsonPropertyName("width")]
     public required int Width { get; init; }
+
+    [JsonPropertyName("height")]
     public required int Height { get; init; }
+
+    [JsonPropertyName("blurHash")]
     public required string BlurHash { get; init; }
 
+    [JsonPropertyName("etag")]
     public required string ETag { get; init; }
+
+    [JsonPropertyName("ctag")]
     public required string CTag { get; init; }
 
+    [JsonPropertyName("modifiedAt")]
     [JsonConverter(typeof(DateTimeOffsetConverter))]
     public required DateTimeOffset ModifiedAt { get; init; }
 
+    [JsonPropertyName("exif")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     [JsonConverter(typeof(ExifProfileConverter))]
     public ExifProfile? Exif { get; init; }
