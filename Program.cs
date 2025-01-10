@@ -40,26 +40,24 @@ class Program
                 .Name("website", "website tools")
                 .Alias("site")
                 .Command(cmd => cmd
-                    .Name("sync", "sync portfolio with onedrive and generate website")
+                    .Name("sync", "sync manifest with onedrive and build website from template")
                     .Handler(
                         SiteSync,
-                        new Argument<string>("template dir"),
-                        new Argument<string>("output dir")
+                        new Argument<string>("template dir")
                     )
                 )
                 .Command(cmd => cmd
-                    .Name("generate", "generate website from template")
+                    .Name("build", "build website from template")
                     .Handler(
-                        SiteGenerate,
-                        new Argument<string>("portfolio.json.gz"),
+                        SiteBuild,
                         new Argument<string>("template dir"),
-                        new Argument<string>("output dir")
+                        new Argument<string>("manifest.json.gz")
                     )
                 )
                 .Command(cmd => cmd
-                    .Name("build", "request netlify build & deploy")
+                    .Name("build-netlify", "request netlify build & deploy")
                     .Handler(
-                        SiteBuild
+                        SiteBuildNetlify
                     )
                 )
             )
@@ -72,40 +70,40 @@ class Program
                 )
             )
             .Command(cmd => cmd
-                .Name("portfolio", "portfolio.json.gz tools")
+                .Name("manifest", "manifest.json.gz tools")
                 .Command(cmd => cmd
-                    .Name("from-netlify", "create portfolio.json.gz from netlify site")
+                    .Name("from-netlify", "create manifest.json.gz from netlify site")
                     .Handler(
-                        PortfolioFromNetlify,
-                        new Argument<string>("output file", () => "portfolio.json.gz")
+                        ManifestFromNetlify,
+                        new Argument<string>("output file", () => "manifest.json.gz")
                     )
                 )
                 .Command(cmd => cmd
-                    .Name("from-onedrive", "create portfolio.json.gz from onedrive")
+                    .Name("from-onedrive", "create manifest.json.gz from onedrive")
                     .Handler(
-                        PortfolioFromOneDrive,
-                        new Argument<string>("output file", () => "portfolio.json.gz")
+                        ManifestFromOneDrive,
+                        new Argument<string>("output file", () => "manifest.json.gz")
                     )
                 )
                 .Command(cmd => cmd
-                    .Name("from-netlify-onedrive", "create portfolio.json.gz from netlify site and onedrive")
+                    .Name("from-netlify-onedrive", "create manifest.json.gz from netlify site and onedrive")
                     .Handler(
-                        PortfolioFromNetlifyOneDrive,
-                        new Argument<string>("output file", () => "portfolio.json.gz")
+                        ManifestFromNetlifyOneDrive,
+                        new Argument<string>("output file", () => "manifest.json.gz")
                     )
                 )
                 .Command(cmd => cmd
-                    .Name("from-local-onedrive", "create portfolio.json.gz from local and onedrive")
+                    .Name("from-local-onedrive", "create manifest.json.gz from local and onedrive")
                     .Handler(
-                        PortfolioFromLocalOneDrive,
-                        new Argument<string>("input & output file", () => "portfolio.json.gz")
+                        ManifestFromLocalOneDrive,
+                        new Argument<string>("input & output file", () => "manifest.json.gz")
                     )
                 )
                 .Command(cmd => cmd
-                    .Name("show-photos", "show photo information from portfolio.json.gz")
+                    .Name("show-photos", "show photo information from manifest.json.gz")
                     .Handler(
-                        PortfolioShowPhotos,
-                        new Argument<string>("file name or url", () => "portfolio.json.gz")
+                        ManifestShowPhotos,
+                        new Argument<string>("file name or url", () => "manifest.json.gz")
                     )
                 )
             )
@@ -119,9 +117,9 @@ class Program
                     )
                 )
                 .Command(cmd => cmd
-                    .Name("from-portfolio", "show exif for all images in portfolio.json.gz")
+                    .Name("from-manifest", "show exif for all images in manifest.json.gz")
                     .Handler(
-                        ExifFromPortfolio,
+                        ExifFromManifest,
                         new Argument<string>("file name or url")
                     )
                 )
@@ -215,28 +213,30 @@ class Program
         throw new CommandException($"invalid time span: {timeSpanExpr}");
     }
 
-    static async Task SiteSync(string templateDir, string outputDir, CancellationToken ct)
+    static async Task SiteSync(string templateDir, CancellationToken ct)
     {
         var netlify = _provider.GetRequiredService<NetlifyClient>();
-        var portfolioManager = _provider.GetRequiredService<PortfolioManager>();
-        var siteGenerator = _provider.GetRequiredService<SiteGenerator>();
+        var manager = _provider.GetRequiredService<ManifestManager>();
+        var builder = _provider.GetRequiredService<SiteBuilder>();
 
-        var portfolio = await netlify.GetDeployedPortfolio(ct);
-        var newPortfolio = await portfolioManager.SyncWithOneDrive(portfolio, ct);
+        var manifest = await netlify.GetDeployedManifest(ct);
+        var newManifest = await manager.SyncWithOneDrive(manifest, ct);
 
-        await siteGenerator.Generate(newPortfolio, templateDir, outputDir);
+        await builder.Build(templateDir, newManifest, ct);
     }
 
-    static async Task SiteGenerate(string portfolioFileName, string templateDir, string outputDir, CancellationToken ct)
+    static async Task SiteBuild(string templateDir, string manifestFileName, CancellationToken ct)
     {
-        if (!File.Exists(portfolioFileName))
-        {
-            throw new CommandException($"portfolio json does not exist: {portfolioFileName}");
-        }
+        var manifest = ManifestSerializer.LoadFile(manifestFileName);
+        var builder = _provider.GetRequiredService<SiteBuilder>();
 
-        var portfolio = Portfolio.FromFile(portfolioFileName);
-        var generator = _provider.GetRequiredService<SiteGenerator>();
-        await generator.Generate(portfolio, templateDir, outputDir);
+        await builder.Build(templateDir, manifest, ct);
+    }
+
+    static async Task SiteBuildNetlify(CancellationToken ct)
+    {
+        var netlify = _provider.GetRequiredService<NetlifyClient>();
+        await netlify.RequestBuild(ct);
     }
 
     static async Task OneDriveListPhotos(CancellationToken ct)
@@ -248,7 +248,7 @@ class Program
         }
     }
 
-    static async Task PortfolioFromNetlify(string outputFile, CancellationToken ct)
+    static async Task ManifestFromNetlify(string outputFile, CancellationToken ct)
     {
         if (File.Exists(outputFile))
         {
@@ -256,27 +256,27 @@ class Program
         }
 
         var netlify = _provider.GetRequiredService<NetlifyClient>();
-        var portfolio = await netlify.GetDeployedPortfolio(ct);
-        portfolio.ToGzip(outputFile);
+        var manifest = await netlify.GetDeployedManifest(ct);
+        ManifestSerializer.SaveGzip(manifest, outputFile);
 
-        Log.Info($"portfolio saved to {outputFile}");
+        Log.Info($"manifest saved to {outputFile}");
     }
 
-    static async Task PortfolioFromOneDrive(string outputFile, CancellationToken ct)
+    static async Task ManifestFromOneDrive(string outputFile, CancellationToken ct)
     {
         if (File.Exists(outputFile))
         {
             throw new CommandException($"output file already exists: {outputFile}");
         }
 
-        var portfolioManager = _provider.GetRequiredService<PortfolioManager>();
-        var portfolio = await portfolioManager.SyncWithOneDrive(new Portfolio { Photos = [] }, ct);
-        portfolio.ToGzip(outputFile);
+        var manager = _provider.GetRequiredService<ManifestManager>();
+        var manifest = await manager.SyncWithOneDrive(new Manifest { Photos = [] }, ct);
+        ManifestSerializer.SaveGzip(manifest, outputFile);
 
-        Log.Info($"portfolio saved to {outputFile}");
+        Log.Info($"manifest saved to {outputFile}");
     }
 
-    static async Task PortfolioFromNetlifyOneDrive(string outputFile, CancellationToken ct)
+    static async Task ManifestFromNetlifyOneDrive(string outputFile, CancellationToken ct)
     {
         if (File.Exists(outputFile))
         {
@@ -284,47 +284,38 @@ class Program
         }
 
         var netlify = _provider.GetRequiredService<NetlifyClient>();
-        var portfolioManager = _provider.GetRequiredService<PortfolioManager>();
+        var manager = _provider.GetRequiredService<ManifestManager>();
 
-        var portfolio = await netlify.GetDeployedPortfolio(ct);
-        var newPortfolio = await portfolioManager.SyncWithOneDrive(portfolio, ct);
-        newPortfolio.ToGzip(outputFile);
+        var manifest = await netlify.GetDeployedManifest(ct);
+        var newManifest = await manager.SyncWithOneDrive(manifest, ct);
+        ManifestSerializer.SaveGzip(newManifest, outputFile);
 
-        Log.Info($"portfolio saved to {outputFile}");
+        Log.Info($"manifest saved to {outputFile}");
     }
 
-    static async Task PortfolioFromLocalOneDrive(string inputOutputFile, CancellationToken ct)
+    static async Task ManifestFromLocalOneDrive(string inputOutputFile, CancellationToken ct)
     {
-        var portfolioManager = _provider.GetRequiredService<PortfolioManager>();
+        var manager = _provider.GetRequiredService<ManifestManager>();
 
-        var portfolio = Portfolio.FromFile(inputOutputFile);
-        var newPortfolio = await portfolioManager.SyncWithOneDrive(portfolio, ct);
-        newPortfolio.ToGzip(inputOutputFile);
+        var manifest = ManifestSerializer.LoadFile(inputOutputFile);
+        var newManifest = await manager.SyncWithOneDrive(manifest, ct);
+        ManifestSerializer.SaveGzip(newManifest, inputOutputFile);
 
-        Log.Info($"portfolio saved to {inputOutputFile}");
+        Log.Info($"manifest saved to {inputOutputFile}");
     }
 
-    static async Task PortfolioShowPhotos(string fileNameOrUrl, CancellationToken ct)
+    static async Task ManifestShowPhotos(string fileNameOrUrl, CancellationToken ct)
     {
         using var http = new HttpClient();
-        using var portfolioStream = (Uri.TryCreate(fileNameOrUrl, UriKind.Absolute, out var url) && url.Scheme.StartsWith("http"))
+        using var manifestStream = (Uri.TryCreate(fileNameOrUrl, UriKind.Absolute, out var url) && url.Scheme.StartsWith("http"))
             ? await http.GetStreamAsync(url, ct)
             : File.OpenRead(fileNameOrUrl);
 
-        var portfolio = Portfolio.FromGzip(portfolioStream);
-        foreach (var photo in portfolio.Photos)
+        var manifest = ManifestSerializer.LoadGzip(manifestStream);
+        foreach (var photo in manifest.Photos)
         {
             Log.Info(photo);
         }
-    }
-
-    static async Task SiteBuild(CancellationToken ct)
-    {
-        var config = _provider.GetRequiredService<NetlifyConfig>();
-        Log.Info($"post {config.BuildHookUrl}");
-
-        using var client = new HttpClient();
-        await client.PostAsync(config.BuildHookUrl, new StringContent("{}"), ct);
     }
 
     static async Task ExifFromImage(string fileNameOrUrl, CancellationToken ct)
@@ -338,15 +329,15 @@ class Program
         ShowExif(image.Metadata.ExifProfile);
     }
 
-    static async Task ExifFromPortfolio(string fileNameOrUrl, CancellationToken ct)
+    static async Task ExifFromManifest(string fileNameOrUrl, CancellationToken ct)
     {
         using var http = new HttpClient();
-        using var portfolioStream = (Uri.TryCreate(fileNameOrUrl, UriKind.Absolute, out var url) && url.Scheme.StartsWith("http"))
+        using var manifestStream = (Uri.TryCreate(fileNameOrUrl, UriKind.Absolute, out var url) && url.Scheme.StartsWith("http"))
             ? await http.GetStreamAsync(url, ct)
             : File.OpenRead(fileNameOrUrl);
 
-        var portfolio = Portfolio.FromGzip(portfolioStream);
-        foreach (var photo in portfolio.Photos)
+        var manifest = ManifestSerializer.LoadGzip(manifestStream);
+        foreach (var photo in manifest.Photos)
         {
             Log.Info(string.Join('/', photo.Path));
             if (photo.Exif == null)

@@ -1,5 +1,6 @@
 bin/
 obj/
 public/
+.vscode/
 appsettings*.json*
-portfolio*.json*
+manifest*.json*

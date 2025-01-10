@@ -9,8 +9,9 @@
     <PackageReference Include="Azure.Identity" Version="1.12.0" />
     <PackageReference Include="Blurhash.ImageSharp" Version="4.0.0" />
     <PackageReference Include="ConsoleTableExt" Version="3.3.0" />
-    <PackageReference Include="Fluid.Core" Version="2.11.1" />
-    <PackageReference Include="Fluid.MvcViewEngine" Version="2.11.1" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
     <PackageReference Include="Microsoft.Graph" Version="5.58.0" />
     <PackageReference Include="Microsoft.Identity.Client" Version="4.64.1" />
     <PackageReference Include="NetlifySharp" Version="1.1.1" />

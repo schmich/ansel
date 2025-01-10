@@ -9,10 +9,10 @@ public static class Services
     public static void Configure(IServiceCollection services, IConfigurationRoot root)
     {
         services
-            .AddSingleton<SiteGenerator>()
-            .AddSingleton<PortfolioManager>()
             .AddSingleton(_ => GetConfig<OneDriveConfig>(root))
             .AddSingleton(_ => GetConfig<NetlifyConfig>(root))
+            .AddSingleton<ManifestManager>()
+            .AddSingleton<SiteBuilder>()
             .AddSingleton(provider =>
             {
                 var config = provider.GetRequiredService<OneDriveConfig>();
