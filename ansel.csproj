@@ -21,4 +21,10 @@
     <PackageReference Include="System.CommandLine" Version="2.0.0-beta4.22272.1" />
     <PackageReference Include="System.Linq.Async" Version="6.0.1" />
   </ItemGroup>
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' == 'win-x64'">
+      <AssemblyName>ansel-win-x64</AssemblyName>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' == 'linux-x64'">
+      <AssemblyName>ansel-linux-x64</AssemblyName>
+  </PropertyGroup>
 </Project>
