@@ -28,14 +28,14 @@ class NetlifyClient(NetlifySharp.NetlifyClient netlify, NetlifyConfig config)
             using var stream = await client.GetStreamAsync(manifestUrl, ct);
             return ManifestSerializer.LoadGzip(stream);
         }
-        catch (JsonException)
-        {
-            Log.Warn("malformed manifest.json.gz, using empty manifest");
-            return new Manifest { Photos = [] };
-        }
         catch (HttpRequestException e) when (e.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
             Log.Warn("http 404 for manifest.json.gz, using empty manifest");
+            return new Manifest { Photos = [] };
+        }
+        catch (Exception e) when (e is JsonException || e is InvalidDataException)
+        {
+            Log.Warn("malformed manifest.json.gz, using empty manifest");
             return new Manifest { Photos = [] };
         }
     }
