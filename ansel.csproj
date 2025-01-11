@@ -20,6 +20,7 @@
     <PackageReference Include="SixLabors.ImageSharp" Version="3.1.5" />
     <PackageReference Include="System.CommandLine" Version="2.0.0-beta4.22272.1" />
     <PackageReference Include="System.Linq.Async" Version="6.0.1" />
+    <PackageReference Include="Tomlyn" Version="0.18.0" />
   </ItemGroup>
   <PropertyGroup Condition="'$(RuntimeIdentifier)' == 'win-x64'">
       <AssemblyName>ansel-win-x64</AssemblyName>
